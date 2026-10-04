@@ -90,6 +90,27 @@ class Run:
 # 1-2. window and listing
 # ---------------------------------------------------------------------------
 
+def portal_reachable(run: Run) -> bool:
+    """One short look at the portal before anything else.
+
+    goir.ap.gov.in answers only connections from India: tested 2026-10-04
+    from 40 locations, Mumbai answered in 0.27 s and all 39 elsewhere timed
+    out. Without this check a machine outside India spends three 90-second
+    timeouts on every one of 120 day-listings and is killed at 45 minutes —
+    which is exactly what the first GitHub run did.
+    """
+    err = None
+    for _ in range(2):
+        try:
+            G._fetch(G.BASE, timeout=25)
+            return True
+        except Exception as e:  # noqa: BLE001
+            err = e
+    run.problem(f"the GOIR portal did not answer from this machine ({type(err).__name__}: {err}). "
+                f"It accepts connections only from India.")
+    return False
+
+
 def window(until: dt.date, lookback: int) -> list[dt.date]:
     return [until - dt.timedelta(days=i) for i in range(lookback - 1, -1, -1)]
 
@@ -492,6 +513,14 @@ def main() -> int:
     lookback = a.lookback or (SUNDAY_LOOKBACK if today.weekday() == 6 else DAILY_LOOKBACK)
     days = window(until, lookback)
     print(f"GOIR sync ({a.mode}): {days[0]} .. {days[-1]}, OCR engine: {P.ocr_engine() or 'none'}", flush=True)
+
+    if not portal_reachable(run):
+        text = report(run, days, a.mode, started)
+        print("\n" + text)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+                fh.write(text)
+        return 1
 
     listings = read_listings(days, run)
     print(f"  listed {len(listings):,} (MS {run.counts['listed_MS']:,}, RT {run.counts['listed_RT']:,})", flush=True)
