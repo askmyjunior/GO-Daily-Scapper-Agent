@@ -49,7 +49,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Self-test (imports; Tesseract reads a scan; each secret works)
+      - name: Self-test (imports; Tesseract reads a scan; each secret works; the relay reaches the portal)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -57,6 +57,10 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # The portal answers only from India; this runner is in the US. Its
+          # requests go through relay/ on Google Cloud Run in Mumbai.
+          GOIR_RELAY_URL: https://goir-relay-968069382233.asia-south1.run.app
+          GOIR_RELAY_TOKEN: ${{ secrets.GOIR_RELAY_TOKEN }}
         run: python selftest.py
 
       - name: Sync
@@ -67,6 +71,10 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # The portal answers only from India; this runner is in the US. Its
+          # requests go through relay/ on Google Cloud Run in Mumbai.
+          GOIR_RELAY_URL: https://goir-relay-968069382233.asia-south1.run.app
+          GOIR_RELAY_TOKEN: ${{ secrets.GOIR_RELAY_TOKEN }}
           # Inputs go through the environment, never into the script text.
           # A scheduled run has no inputs, so it is a full run.
           MODE: ${{ inputs.mode || 'full' }}

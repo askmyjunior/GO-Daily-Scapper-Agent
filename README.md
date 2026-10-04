@@ -29,9 +29,37 @@ update never depends on a laptop being switched on.
 8. **Refresh:** category counts and the facet cache, so the site's numbers move
    with the corpus.
 
+## Where it runs, and why there is a relay
+
+The GOIR portal answers **only connections from India**. Tested on 4 Oct 2026
+from 40 locations, only Mumbai got through. GitHub's machines are in the US, so
+the job's requests to the portal go through **`relay/`**, a small Python service
+on Google Cloud Run in Mumbai (`asia-south1`, project `gen-lang-client-0056096032`).
+It talks to that one site only (the listing page and document downloads), and
+only to callers presenting `GOIR_RELAY_TOKEN`.
+
+Everything else (the database, R2, Gemini, OCR) runs on GitHub. On a machine in
+India, such as the Mac, leave `GOIR_RELAY_URL` unset and the job talks to the
+portal directly.
+
+The relay isn't a Supabase Edge Function, though that was tried first. The
+portal only completes TLS 1.2 handshakes with CBC ciphers, and Deno's TLS
+library offers none of those, so the connection is reset.
+
+**Redeploying the relay** after changing `relay/main.py` is one command in Cloud
+Shell, run from a folder holding `main.py`. It uses Google's standard Python
+image with no build step:
+
+```sh
+gcloud run deploy goir-relay --image mirror.gcr.io/library/python:3.12-slim \
+  --region asia-south1 --allow-unauthenticated --max-instances 2 --memory 256Mi \
+  --command python --args="-c,import os;import base64;import gzip;exec(gzip.decompress(base64.b64decode(os.environ['RELAY_CODE'])))" \
+  --update-env-vars "RELAY_CODE=$(gzip -9c main.py | base64 -w0)" --quiet
+```
+
 ## Setup (once)
 
-Add these under **Settings → Secrets and variables → Actions → New repository
+Add these seven under **Settings → Secrets and variables → Actions → New repository
 secret**. Each value is in a file on the laptop: open the file in a text editor
 and copy the value after the `=`. Don't paste them in a terminal or a chat.
 
@@ -43,6 +71,7 @@ and copy the value after the `=`. Don't paste them in a terminal or a chat.
 | `R2_ACCESS_KEY_ID` | `~/.askmyjunior/r2.env` |
 | `R2_SECRET_ACCESS_KEY` | `~/.askmyjunior/r2.env` |
 | `GEMINI_API_KEY` | `~/.askmyjunior/gemini.env` |
+| `GOIR_RELAY_TOKEN` | `~/.askmyjunior/goir_relay.env` (the same value set on the Mumbai relay) |
 
 Then go to **Actions → GOIR daily sync → Run workflow** and choose
 **mode: dry-run** first. A dry run reads the portal and the database and parses
