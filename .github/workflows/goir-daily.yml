@@ -49,7 +49,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Self-test (imports; Tesseract reads a scan)
+      - name: Self-test (imports; Tesseract reads a scan; each secret works)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python selftest.py
 
       - name: Sync
