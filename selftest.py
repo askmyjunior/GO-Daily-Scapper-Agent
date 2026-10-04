@@ -40,8 +40,11 @@ R2_CANARY = "pdf/7f/b5/7fb53e8b2370374bdc356ec0af5cdb1423c3a69d0c7e3007ddffd1cd4
 
 
 def first_line(e: BaseException) -> str:
-    text = str(e).strip().splitlines()
-    return (text[0] if text else type(e).__name__)[:200]
+    """The error, on one line. Line breaks are shown, not swallowed: the first
+    cloud run's real fault was a line break inside a value, and cutting the
+    message at it hid exactly that."""
+    text = str(e).strip().replace("\n", " \u23ce ")
+    return (text or type(e).__name__)[:300]
 
 
 def check_credentials() -> int:
@@ -49,6 +52,8 @@ def check_credentials() -> int:
     repeated database authentication failure trips the pooler's circuit
     breaker and blocks every client for ~15 minutes."""
     bad = 0
+    for name, why in P.TIDIED.items():
+        print(f"  note {name}: had {why}; ignored")
     if os.environ.get("GITHUB_ACTIONS"):
         for name in SECRETS:
             if not os.environ.get(name):

@@ -50,6 +50,33 @@ HERE = Path(__file__).resolve().parent
 VENDOR = HERE / "vendor"
 sys.path.insert(0, str(VENDOR))
 
+# Credentials pasted into GitHub's secret box arrive however they were copied.
+# The first cloud run failed on each of the two usual ways: the whole line
+# ("SUPABASE_DB_URL=postgresql://...") and then a trailing line break, which
+# made the database name "postgres\n" — a database that does not exist. No
+# value here legitimately carries its own name, quotes, or outer whitespace,
+# so they are removed before anything reads them, and selftest.py says which
+# secrets needed it (never what they contain).
+SECRET_NAMES = ("SUPABASE_DB_URL", "R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID",
+                "R2_SECRET_ACCESS_KEY", "GEMINI_API_KEY")
+TIDIED: dict[str, str] = {}
+for _name in SECRET_NAMES:
+    _raw = os.environ.get(_name)
+    if not _raw:
+        continue
+    _v, _why = _raw.strip(), []
+    if _v != _raw:
+        _why.append("spaces or a line break around it")
+    if _v.startswith(_name + "="):
+        _v = _v[len(_name) + 1:].strip()
+        _why.append(f"its name pasted in front ({_name}=)")
+    if len(_v) >= 2 and _v[0] == _v[-1] and _v[0] in "\"'":
+        _v = _v[1:-1].strip()
+        _why.append("quotation marks around it")
+    if _why:
+        os.environ[_name] = _v
+        TIDIED[_name] = ", ".join(_why)
+
 import go_parser as gp  # noqa: E402
 import load_supabase as ls  # noqa: E402
 import load_rt  # noqa: E402
