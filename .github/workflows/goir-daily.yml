@@ -2,9 +2,13 @@ name: GOIR daily sync
 
 on:
   schedule:
-    # 19:00 IST is 13:30 UTC. GitHub can start a scheduled run some minutes
-    # late at busy times, which does not matter for a nightly sync.
-    - cron: "30 13 * * *"
+    # 19:07 IST is 13:37 UTC. Deliberately an odd minute: GitHub delays
+    # scheduled runs at busy times (its docs name the start of every hour)
+    # and, under enough load, drops them. The first scheduled run, set for
+    # 19:00 IST on 4 Oct 2026, never started (still nothing at 20:42). A
+    # missed day costs a day's delay, not orders: the next run's 15-day window
+    # covers it.
+    - cron: "37 13 * * *"
   workflow_dispatch:
     inputs:
       mode:

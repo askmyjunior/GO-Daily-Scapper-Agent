@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GOIR -> AskMyJunior, every day. Runs on GitHub Actions at 19:00 IST.
+"""GOIR -> AskMyJunior, every day. Runs on GitHub Actions at 19:07 IST.
 
     python3 sync.py --mode dry-run      # read the portal, parse; write nothing anywhere
     python3 sync.py                     # the daily run

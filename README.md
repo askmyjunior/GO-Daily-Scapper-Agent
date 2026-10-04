@@ -4,7 +4,7 @@ Brings new Andhra Pradesh Government Orders from the GOIR portal
 (goir.ap.gov.in) into AskMyJunior every evening, on GitHub Actions, so the
 update never depends on a laptop being switched on.
 
-**Schedule:** 19:00 IST daily (`.github/workflows/goir-daily.yml`).
+**Schedule:** 19:07 IST daily (`.github/workflows/goir-daily.yml`). An odd minute on purpose: GitHub delays, and can drop, scheduled runs at busy times such as the start of the hour.
 
 ## What a run does
 
