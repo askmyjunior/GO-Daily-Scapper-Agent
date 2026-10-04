@@ -31,7 +31,7 @@ import sync  # noqa: E402,F401
 WORDS = ("GOVERNMENT", "ANDHRA", "PRADESH", "ABSTRACT", "Revenue", "Sanction")
 
 SECRETS = ("SUPABASE_DB_URL", "R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID",
-           "R2_SECRET_ACCESS_KEY", "GEMINI_API_KEY")
+           "R2_SECRET_ACCESS_KEY", "GEMINI_API_KEY", "GOIR_RELAY_TOKEN")
 
 # An object known to be in the bucket (G.O.Rt.No.1290/2026, General
 # Administration). Reading its metadata proves the R2 keys can read; nothing
@@ -91,6 +91,18 @@ def check_credentials() -> int:
     except BaseException as e:  # noqa: BLE001
         print(f"  x GEMINI_API_KEY: {first_line(e)}")
         bad += 1
+    if os.environ.get("GOIR_RELAY_URL"):
+        # The portal itself, through the Mumbai relay: the listing page must
+        # come back with the form the sync posts to.
+        try:
+            page, cookie = goir_portal._fetch(goir_portal.BASE, timeout=40)
+            if "__VIEWSTATE" not in page:
+                raise RuntimeError("the relay answered, but not with the portal's listing form")
+            print(f"  ok GOIR_RELAY_TOKEN: the relay reaches the portal from Mumbai "
+                  f"({len(page):,} bytes, session cookie {'given' if cookie else 'missing'})")
+        except BaseException as e:  # noqa: BLE001
+            print(f"  x GOIR_RELAY_TOKEN / relay: {first_line(e)}")
+            bad += 1
     return bad
 
 

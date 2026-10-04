@@ -29,7 +29,10 @@ from __future__ import annotations
 import datetime as dt
 import gzip
 import html as htmllib
+import json
+import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -44,8 +47,50 @@ class ShortRead(Exception):
     """The portal said N rows and gave fewer. Never swallowed."""
 
 
+def _relay_conf() -> tuple[str, str] | None:
+    """(url, token) when the portal must be reached through the Mumbai relay.
+
+    Read at call time, not import time, so the secrets have already been
+    tidied (pipeline.TIDIED) by whichever script imported this module first.
+    """
+    url = os.environ.get("GOIR_RELAY_URL", "").strip()
+    token = os.environ.get("GOIR_RELAY_TOKEN", "").strip()
+    return (url, token) if url and token else None
+
+
+def _via_relay(conf: tuple[str, str], method: str, path: str, data: bytes | None,
+               cookie: str | None, timeout: int) -> tuple[bytes, str | None]:
+    """One portal request made from Mumbai (relay/main.py).
+
+    The portal answers only connections from India, and the daily sync runs
+    in the US. The relay returns the portal's body untouched, its status in
+    x-goir-status and its session cookie in x-goir-set-cookie.
+    """
+    url, token = conf
+    payload = json.dumps({"method": method, "path": path,
+                          "body": data.decode() if data is not None else None,
+                          "cookie": cookie}).encode()
+    req = urllib.request.Request(url, data=payload, headers={
+        "Content-Type": "application/json", "x-relay-token": token})
+    with urllib.request.urlopen(req, timeout=timeout + 15) as resp:
+        body = resp.read()
+        if resp.headers.get("Content-Encoding") == "gzip":
+            body = gzip.decompress(body)
+        status = int(resp.headers.get("x-goir-status") or 0)
+        if status >= 400:
+            raise urllib.error.HTTPError(path, status, f"portal said {status} (via relay)",
+                                         resp.headers, None)
+        return body, resp.headers.get("x-goir-set-cookie")
+
+
 def _fetch(url: str, data: bytes | None = None, cookie: str | None = None,
            timeout: int = 90) -> tuple[str, str | None]:
+    conf = _relay_conf()
+    if conf:
+        assert url == BASE, f"only the listing page goes through the relay, not {url}"
+        body, set_cookie = _via_relay(conf, "POST" if data is not None else "GET", "/",
+                                      data, cookie, timeout)
+        return body.decode("utf8", "replace"), set_cookie
     headers = {"User-Agent": UA, "Accept": "text/html,application/xhtml+xml"}
     if cookie:
         headers["Cookie"] = cookie
@@ -344,10 +389,14 @@ def pdf(gid: str, lang: str = "E", timeout: int = 90) -> bytes:
     body, so a caller that only checks the status code stores an empty file and
     calls it an order.
     """
-    req = urllib.request.Request(
-        f"{BASE}dgo.ashx?gid={gid}&fileType={lang}", headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read()
+    conf = _relay_conf()
+    if conf:
+        data, _ = _via_relay(conf, "GET", f"/dgo.ashx?gid={gid}&fileType={lang}", None, None, timeout)
+    else:
+        req = urllib.request.Request(
+            f"{BASE}dgo.ashx?gid={gid}&fileType={lang}", headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
     if not data:
         raise FileNotFoundError(f"gid {gid} ({lang}): 0-byte 200, no file on the portal")
     return data

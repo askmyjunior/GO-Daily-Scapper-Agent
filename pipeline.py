@@ -58,7 +58,7 @@ sys.path.insert(0, str(VENDOR))
 # so they are removed before anything reads them, and selftest.py says which
 # secrets needed it (never what they contain).
 SECRET_NAMES = ("SUPABASE_DB_URL", "R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID",
-                "R2_SECRET_ACCESS_KEY", "GEMINI_API_KEY")
+                "R2_SECRET_ACCESS_KEY", "GEMINI_API_KEY", "GOIR_RELAY_TOKEN")
 TIDIED: dict[str, str] = {}
 for _name in SECRET_NAMES:
     _raw = os.environ.get(_name)
