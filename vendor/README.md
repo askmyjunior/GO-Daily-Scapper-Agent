@@ -1,0 +1,27 @@
+# Vendored from go-ingestion
+
+Copied verbatim on 2026-10-04 from
+`AskMyJunior/AP GOs Download Code/go-ingestion/` (not a git repo), so the
+daily job builds rows with exactly the code the corpus was built with.
+
+**Do not edit here.** Change the original, then re-copy with `./vendor_sync.sh`
+and commit; the checksums below say whether a copy has drifted.
+
+```
+78ecc46404bb22f6f35170a2270626db5f3cec0e605cc28e97245ca21003541b  classify_category.py
+4b6badad473f2e139811afd7c7d02e8dffc40b20eae20e61b18aaef068b636ad  classify_gemini.py
+eb9ffb03e06a93fcb57183c340c895348cbdb20ecfe914b5bca7d65f73fc4f20  classify_no_text.py
+9997a08e3b9f476265fb4c9f7e4ef83ceed5b352c3854820b98c60eece9e5521  clean_abstract.py
+e2ecd2cfe4692945db3369aad70e015eaec2de1f81f82d4070c4120529ac3a1b  go_parser.py
+95ff55ed5cf8ef2f44bec4583904164d09c708faf3322e6dc619418115fe4bdf  load_rt.py
+65534728b2850c859af5e8b9f468275004198cf5251c51988e1e298cfd0dbf54  load_supabase.py
+692ca26306bcb491d184dd31c796d2344cc1a077a971e134bcaf28fb74f9676b  ocr_recover.py
+ea3be3e528026c56ba4642a295bf1b5dab77474b9178334bc940c89973636a9d  push_no_text_classification.py
+39f08aa21f4406813cd6a168dddfac214b0ca584255fdf3e052566aa9f2a873f  rebuild_search_index.py
+68b5d1b05c48c675256008741636a4cdbd3cfdf2b2272e2a6370c8da46015c94  recover_doc.py
+1f2fdbc2d58ade8fef7139079e8f78b9124459fb2e1674de74315a6665e494b3  recover_doc_text.py
+9f8585d6858c988a94cc6832d659154912ed738f2513c2e639976e8ac4ad1e7b  recover_ocr_text.py
+0121a98c0df8ead01fa4ff60e8ff539f69897300b7c3b16771524f6dbef37f54  resolve_departments.py
+89b5b7a5956fc912a19eed13e94deb4ed8b3009a1943d35be1bf75b77b247e10  route_for_ai.py
+50ad608e7dedd47b822a96af52a8daf54688095f8a08a9119da22eecad2a7e5f  upload_r2.py
+```

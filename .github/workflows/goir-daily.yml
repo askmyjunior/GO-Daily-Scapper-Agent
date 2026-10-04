@@ -1,0 +1,81 @@
+name: GOIR daily sync
+
+on:
+  schedule:
+    # 19:00 IST is 13:30 UTC. GitHub can start a scheduled run some minutes
+    # late at busy times, which does not matter for a nightly sync.
+    - cron: "30 13 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run reads the portal and parses, writing nothing; full loads"
+        type: choice
+        options: [dry-run, full]
+        default: dry-run
+      lookback:
+        description: "Days to re-check by G.O. date (blank: 15, or 60 on Sundays)"
+        required: false
+        default: ""
+      limit:
+        description: "At most this many new orders (blank: no limit)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Never two runs at once: the second would race the first for the same orders.
+concurrency:
+  group: goir-daily
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Tesseract (scans) and antiword (old Word files)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-eng antiword
+          tesseract --version | head -1
+
+      - run: pip install -r requirements.txt
+
+      - name: Self-test (imports; Tesseract reads a scan)
+        run: python selftest.py
+
+      - name: Sync
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Inputs go through the environment, never into the script text.
+          # A scheduled run has no inputs, so it is a full run.
+          MODE: ${{ inputs.mode || 'full' }}
+          LOOKBACK: ${{ inputs.lookback }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -- --mode "$MODE"
+          if [ -n "$LOOKBACK" ]; then set -- "$@" --lookback "$LOOKBACK"; fi
+          if [ -n "$LIMIT" ]; then set -- "$@" --limit "$LIMIT"; fi
+          python sync.py "$@"
+
+      - name: Keep the run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-report
+          path: out/sync_report.json
+          retention-days: 30
+          if-no-files-found: ignore

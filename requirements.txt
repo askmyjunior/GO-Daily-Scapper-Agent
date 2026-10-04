@@ -1,0 +1,6 @@
+# Pinned to what built the catch-up's 6,820 orders, so the cloud run parses
+# exactly as the laptop did. PyMuPDF's version decides the extracted text.
+pymupdf==1.26.5
+psycopg[binary]==3.2.13
+psycopg2-binary==2.9.12
+boto3==1.42.97

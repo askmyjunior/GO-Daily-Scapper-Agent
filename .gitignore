@@ -1,0 +1,6 @@
+# Downloaded documents, OCR caches, CSVs and logs: data, not code.
+out/
+vendor/out/
+*.log
+__pycache__/
+.DS_Store
