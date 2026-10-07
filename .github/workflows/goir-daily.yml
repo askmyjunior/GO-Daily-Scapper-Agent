@@ -53,6 +53,9 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Unit tests (no network, no secrets)
+        run: python -m unittest discover -s tests
+
       - name: Self-test (imports; Tesseract reads a scan; each secret works; the relay reaches the portal)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

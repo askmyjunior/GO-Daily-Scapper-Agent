@@ -20,6 +20,13 @@ update never depends on a laptop being switched on.
    OCR'd yet.
 4. **Download, parse, OCR:** the corpus's own parser (`vendor/`). Scans go
    through **Tesseract**, with the same quality gates as the corpus's earlier OCR.
+   **The G.O. number and date stored are the register's** (the listing's, the
+   same values as in the file name). The parser can read them off the first
+   document an order cites in its Read list; until 7 Oct 2026 the header's won,
+   and 53 of the first 7,067 orders went in with a cited order's number or date.
+   The header fills only what the register lacks, and only from text printed
+   before the Read list. Where the two differ, `go_date_remark` and `warnings`
+   record what the header said.
 5. **R2:** every file is uploaded and verified *before* any row points at it.
 6. **Load:** orders, references, recipients and the search index go in **one
    transaction**, so a run lands whole or not at all.
@@ -122,6 +129,7 @@ Measured on the October catch-up:
 | `goir_portal.py` | Reads the portal over HTTP (no browser) and checks every read against the portal's count |
 | `classify_new.py` | Gemini classification into the live taxonomy |
 | `selftest.py` | Checks run before each sync |
+| `tests/` | Unit tests, run before each sync (`python3 -m unittest discover -s tests`) |
 | `vendor/` | The corpus's own parser and loaders, copied from go-ingestion (see `vendor/README.md`) |
 | `fetch_catchup.py`, `load_catchup.py` | The October 2026 catch-up, kept as the record of it |
 

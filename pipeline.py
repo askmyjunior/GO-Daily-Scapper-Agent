@@ -202,6 +202,143 @@ def header_only(abstract: str | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# the order's own number and date: the register's, the header's only to fill
+# ---------------------------------------------------------------------------
+#
+# The parser's anchors can land on the first document an order cites. Row
+# 445791 was stored as G.O.Rt.No.165 of 22-04-2021; it is G.O.Rt.No.500 of
+# 24-06-2022, and 165 / 22-04-2021 is item 1 of its "Read the following" list.
+# 4,783 older RT rows were corrected for this on 2026-10-07. The register
+# listing names every order the sync loads, with its number and date, so those
+# are stored; the header only fills what the register lacks, and only from
+# text printed before the Read list begins.
+
+# Where the Read list begins: its heading on a line of its own ("Read the
+# following:-", "Read:", "Ref:"), or run on after the number line.
+READ_HEADING_RE = re.compile(
+    r"(?im)^[ \t]*(?:Read|Refs?|References?)\b|\bRead\s+the\s+following\b|\bRead\s*:")
+# No heading at all: the list's first item ("1. G.O.Rt.No. 165, ... Dated...").
+FIRST_ITEM_RE = re.compile(r"(?m)^[ \t]*\(?1[ \t]*[.)][ \t]*\S")
+# Nothing of the header comes after the order begins.
+ORDER_LINE_RE = re.compile(r"(?m)^[ \t]*O\s*R\s*D\s*E\s*R\b")
+# Enough for the masthead, subject and Read list of any page one.
+HEAD_CHARS = 6000
+
+
+def head_text(text: str | None) -> str:
+    return gp.normalize_text(text or "")[:HEAD_CHARS]
+
+
+def pdf_head(p: Path) -> str:
+    """The first two pages' text, read the way parse_pdf reads them."""
+    try:
+        with gp.fitz.open(p) as doc:
+            return head_text("\n".join(doc[i].get_text() for i in range(min(2, len(doc)))))
+    except Exception:
+        return ""
+
+
+def read_list_start(head: str) -> int | None:
+    """Offset of the first document cited, or None when there is no Read list.
+
+    Whichever comes first, the heading or item 1: a text layer out of reading
+    order can print the items above their heading (HMF01-MS-91-10_07_2026).
+    """
+    heading, item, order = (rx.search(head) for rx in (READ_HEADING_RE, FIRST_ITEM_RE, ORDER_LINE_RE))
+    if item and order and item.start() > order.start():
+        item = None    # a "1." below the ORDER line is the body's own paragraph
+    starts = [m.start() for m in (heading, item) if m]
+    return min(starts) if starts else None
+
+
+def _dates_in(text: str) -> set[str]:
+    found = set()
+    for rx in (gp.DATE_RE, gp.DATE_COMPACT_RE):
+        for m in rx.finditer(text):
+            found.add(gp._parse_date(*m.groups())[0])
+    for m in gp.DATE_LONG_RE.finditer(text):
+        day, month, year = m.groups()
+        found.add(gp._parse_date(day, str(gp.MONTHS[month.lower().rstrip(".")]), year)[0])
+    found.discard(None)
+    return found
+
+
+def _numbers_in(text: str) -> set[int]:
+    return {int(re.match(r"\d+", m.group("go_number")).group(0)) for m in gp.GO_NUM_RE.finditer(text)}
+
+
+def where_printed(value, head: str, find) -> str:
+    """Where the parser's value is printed: 'header' (before the Read list),
+    'read_list' (only from the first cited document on), 'unplaced' (no text
+    to look in, or not found as printed), or 'absent' (the parser found none)."""
+    if value is None:
+        return "absent"
+    if not head:
+        return "unplaced"
+    cut = read_list_start(head)
+    if cut is None:
+        order = ORDER_LINE_RE.search(head)
+        cut = order.start() if order else len(head)
+    if value in find(head[:cut]):
+        return "header"
+    if value in find(head[cut:]):
+        return "read_list"
+    return "unplaced"
+
+
+def register_identity(reg_no: int | None, reg_date: dt.date | None, gm: dict, head: str) -> dict:
+    """The number and date to store, their sources, and what the header said.
+
+    The register's value always wins. The header's is used only where the
+    register has none, and then only if it is printed before the Read list.
+    A header that agrees with the register makes the source 'document_header'
+    wherever it sits on the page: two independent records agree.
+    """
+    hdr_no = gm.get("go_number")
+    hdr_date = (gm.get("go_date") or {}).get("iso")
+    out = {"warnings": [], "go_date_remark": None,
+           "number_at": where_printed(hdr_no, head, _numbers_in),
+           "date_at": where_printed(hdr_date, head, _dates_in)}
+
+    if reg_no is not None:
+        out["go_number"] = reg_no
+        out["go_number_source"] = "document_header" if hdr_no == reg_no else "goir_register"
+    elif out["number_at"] == "header":
+        out["go_number"], out["go_number_source"] = hdr_no, "document_header"
+    else:
+        out["go_number"], out["go_number_source"] = None, None
+    if hdr_no is not None and hdr_no != out["go_number"] and out["number_at"] == "read_list":
+        out["warnings"].append("document_number_from_read_list")
+
+    reg_iso = reg_date.isoformat() if reg_date else None
+    if reg_iso:
+        out["go_date"] = reg_iso
+        out["go_date_source"] = ("document_header" if hdr_date == reg_iso
+                                 else "date_uploaded_goir_portal")
+    elif out["date_at"] == "header":
+        out["go_date"], out["go_date_source"] = hdr_date, "document_header"
+    else:
+        out["go_date"], out["go_date_source"] = None, None
+
+    if hdr_date and reg_iso and hdr_date != reg_iso:
+        gap = abs((dt.date.fromisoformat(hdr_date) - reg_date).days)
+        if out["date_at"] == "read_list":
+            out["warnings"].append("document_date_from_read_list")
+            out["go_date_remark"] = (f"Document header date read as {hdr_date}, the date of a document "
+                                     f"in its Read list; the GOIR register's {reg_iso} is used.")
+        else:
+            out["warnings"].append("document_date_differs_from_register")
+            out["go_date_remark"] = (f"Document header date read as {hdr_date}, {gap} days from the "
+                                     f"GOIR register's {reg_iso}; the register's date is used.")
+        if gap > DATE_GAP_DAYS:
+            # The token the site's provenance reads (src/lib/provenance.ts).
+            # Its sentence says "more than a month from the date the GOIR
+            # portal gives it", so it is set only past that gap.
+            out["warnings"].append("document_date_disagrees_with_register")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # reading a file as what it is
 # ---------------------------------------------------------------------------
 
@@ -249,6 +386,7 @@ def parse_one(path_str: str) -> dict:
     if out["is_pdf"]:
         rec = gp.parse_pdf(p)
         out["route"] = "pdf"
+        out["head_text"] = pdf_head(p)
     else:
         # Read as what it is, never as what it is named. PyMuPDF opens a .docx
         # without complaint as one blank page, which is how 1,231 Word files
@@ -256,6 +394,7 @@ def parse_one(path_str: str) -> dict:
         text = read_word(p)
         if text and plausible_text(text):
             text = scrub_filler(text)
+        out["head_text"] = head_text(text)
         if text and len(text.strip()) >= MIN_BODY_CHARS:
             rec = gp.parse_text(p, text, 1, extra_warnings=[RECOVERY_WARNING])
             out["route"] = "docx" if head[:4] == b"PK\x03\x04" else "doc"
@@ -377,6 +516,7 @@ def ocr_scans(results: list[dict], workers: int, engine: str | None,
                 rec["order_text"] = None     # the abstract it found is kept
                 r["ocr"] = ("NEEDS_MANUAL_REVIEW", "ocr_readable_no_boundable_order_block", q)
             r["rec"] = rec
+            r["head_text"] = head_text(text)
             r["route"] = "ocr"
         tally[f"ocr_{r['ocr'][0]}"] += 1
     print(f"  OCR ({engine}): {len(todo)} scans in {time.time() - t0:.0f}s -> "
@@ -457,30 +597,24 @@ def build_row(r: dict, res: dict, dept_ids: dict, dept_codes: dict,
     rec["filename_parsed"] = fp
     has_text = bool(rec.get("order_text"))
 
-    # The document's date wins, as for every other row — unless it is far from
-    # the register's, which is a misread, not a disagreement. 79 of 6,619 in
-    # the catch-up: a lost tab in "No. 227Dated:", or a header saying "Date:",
-    # and the parser took the date of the first cited G.O. Kept, that files an
-    # August 2026 order under 2019 and off every "latest" list.
-    gm = rec.get("go_meta") or {}
-    gd = gm.get("go_date") or {}
-    date_remark = None
-    if gd.get("iso"):
-        gap = abs((dt.date.fromisoformat(gd["iso"]) - day).days)
-        if gap > DATE_GAP_DAYS:
-            date_remark = (f"Document header date read as {gd['iso']}, {gap} days from the "
-                           f"GOIR register's {day.isoformat()}; the register's date is used.")
-            rec["go_meta"] = {**gm, "go_date": {**gd, "iso": None}}
-            # The token the site's provenance reads (src/lib/provenance.ts):
-            # this order's text DOES state a date and ours misread it, so "its
-            # own text does not state its date clearly" would be false.
-            rec["warnings"] = list(rec.get("warnings") or []) + ["document_date_disagrees_with_register"]
-            counts["date_misread_register_used"] += 1
-        elif gap:
-            counts["date_differs_within_window"] += 1
-    final = dt.date.fromisoformat(((rec.get("go_meta") or {}).get("go_date") or {}).get("iso")
-                                  or day.isoformat())
-    rec["go_year"] = final.year
+    # The register's number and date, never the header's over them. Until
+    # 2026-10-07 the header's won, guarded only for dates more than a month
+    # out (79 of 6,619 in the catch-up), so a Read-list date within the month,
+    # and every Read-list number, went in as the order's own. See
+    # register_identity.
+    ident = register_identity(reg_no, day, rec.get("go_meta") or {}, res.get("head_text") or "")
+    rec["warnings"] = list(rec.get("warnings") or []) + ident["warnings"]
+    if ident["number_at"] == "read_list" and ident["go_number"] != (rec.get("go_meta") or {}).get("go_number"):
+        # The parser read the type off the same cited G.O. as the number, so
+        # "the document calls itself a different kind of order" would be false.
+        rec["go_type"] = go_type
+        rec["warnings"] = [w for w in rec["warnings"]
+                           if not w.startswith("filename_body_mismatch:go_type(")]
+    for w in ident["warnings"]:
+        counts[w] += 1
+    counts[f"date_source_{ident['go_date_source']}"] += 1
+    counts[f"number_source_{ident['go_number_source']}"] += 1
+    rec["go_year"] = dt.date.fromisoformat(ident["go_date"]).year
 
     # Abstract: the document's own, as for every other row; the listing's only
     # where the document yields nothing usable, and then said so.
@@ -504,8 +638,11 @@ def build_row(r: dict, res: dict, dept_ids: dict, dept_codes: dict,
     assert row is not None, r["filename"]
 
     status, method, note = text_state(res)
-    if date_remark:
-        row["go_date_remark"] = date_remark
+    # No go_number_remark: the site reads one as "this number is not stated in
+    # the document", false whenever the header printed it.
+    row.update({k: ident[k] for k in ("go_number", "go_number_source", "go_date",
+                                      "go_date_source", "go_date_remark")})
+    row["go_number_goir_register"] = reg_no
     row.update({
         "goir_category": r["goir_category"] if r.get("goir_category") in KNOWN_CATEGORIES else None,
         "date_uploaded_goir_portal": day.isoformat(),
